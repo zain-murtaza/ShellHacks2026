@@ -25,14 +25,19 @@ export function buildBriefingText(
   return `You selected ${task} with ${budget} budget and ${sensitivity} data sensitivity. Your current recommendation is ${tool}. It fits because ${reason} Your estimated cost is ${cost}. Before sharing sensitive information, use the Privacy Gate to redact personal data.`;
 }
 
+export type BriefingResult =
+  | { audioUrl: string; source: 'elevenlabs' }
+  | { source: 'device' }
+  | { error: string };
+
 export async function generateBriefing(
   text: string
-): Promise<{ audioUrl: string } | { error: string }> {
+): Promise<BriefingResult> {
   const functionUrl = getEdgeFunctionUrl();
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   if (!functionUrl || !anonKey) {
-    return { error: 'Supabase not configured' };
+    return { error: 'Voice briefing not configured' };
   }
 
   try {
@@ -47,14 +52,30 @@ export async function generateBriefing(
     });
 
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      return { error: body.error ?? `Request failed (${response.status})` };
+      return { source: 'device' };
     }
 
     const blob = await response.blob();
     const audioUrl = URL.createObjectURL(blob);
-    return { audioUrl };
+    return { audioUrl, source: 'elevenlabs' };
   } catch {
-    return { error: 'Network error contacting voice service' };
+    return { source: 'device' };
+  }
+}
+
+export function speakWithDeviceVoice(text: string): SpeechSynthesisUtterance | null {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+  utterance.volume = 1.0;
+  window.speechSynthesis.speak(utterance);
+  return utterance;
+}
+
+export function stopDeviceVoice(): void {
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    window.speechSynthesis.cancel();
   }
 }

@@ -9,7 +9,7 @@ import { useApp } from '@/context/AppContext';
 import { FitBadge, CostBadge, PrivacyBadge } from '@/components/Badges';
 import { taskLabels } from '@/data/aiTools';
 import type { BriefingStatus, PrivacyCategory } from '@/types';
-import { buildBriefingText, generateBriefing } from '@/lib/voiceService';
+import { buildBriefingText, generateBriefing, speakWithDeviceVoice, stopDeviceVoice } from '@/lib/voiceService';
 
 const privacyLabel: Record<PrivacyCategory, string> = {
   minimal: 'Minimal exposure',
@@ -71,7 +71,7 @@ export function ResultScreen() {
   };
 
   const handleBriefing = async () => {
-    if (briefingStatus === 'generating') return;
+    if (briefingStatus === 'generating' || briefingStatus === 'playing' || briefingStatus === 'device-voice') return;
 
     setBriefingStatus('generating');
     setBriefingError(null);
@@ -80,11 +80,17 @@ export function ResultScreen() {
     const res = await generateBriefing(text);
 
     if ('error' in res) {
-      if (res.error.includes('not configured')) {
-        setBriefingStatus('unavailable');
+      setBriefingStatus('unavailable');
+      return;
+    }
+
+    if (res.source === 'device') {
+      const utterance = speakWithDeviceVoice(text);
+      if (utterance) {
+        utterance.onend = () => setBriefingStatus('idle');
+        setBriefingStatus('device-voice');
       } else {
-        setBriefingStatus('error');
-        setBriefingError(res.error);
+        setBriefingStatus('unavailable');
       }
       return;
     }
@@ -92,8 +98,13 @@ export function ResultScreen() {
     if (audioRef.current) {
       audioRef.current.src = res.audioUrl;
       audioRef.current.play().catch(() => {
-        setBriefingStatus('error');
-        setBriefingError('Unable to play audio');
+        const utterance = speakWithDeviceVoice(text);
+        if (utterance) {
+          utterance.onend = () => setBriefingStatus('idle');
+          setBriefingStatus('device-voice');
+        } else {
+          setBriefingStatus('unavailable');
+        }
       });
     }
     setBriefingStatus('playing');
@@ -104,6 +115,7 @@ export function ResultScreen() {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
+    stopDeviceVoice();
     setBriefingStatus('idle');
   };
 
@@ -143,9 +155,9 @@ export function ResultScreen() {
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-soft p-4 animate-fade-in">
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" />
           <div>
-            <p className="text-sm font-medium text-ink">Using local analysis</p>
+            <p className="text-sm font-medium text-ink">AI reasoning is temporarily unavailable</p>
             <p className="mt-0.5 text-xs text-ink-soft">
-              The AI decision engine is unavailable, so we've applied our built-in ranking algorithm instead.
+              Local analysis is ready — your recommendation is based on our built-in ranking algorithm.
             </p>
           </div>
         </div>
@@ -371,7 +383,7 @@ export function ResultScreen() {
             </>
           )}
         </button>
-        {briefingStatus === 'playing' ? (
+        {briefingStatus === 'playing' || briefingStatus === 'device-voice' ? (
           <button
             onClick={handleStopBriefing}
             className="btn-primary"
@@ -405,23 +417,24 @@ export function ResultScreen() {
         )}
       </div>
 
-      {/* Briefing error */}
-      {briefingStatus === 'error' && briefingError && (
-        <p className="mt-3 text-center text-xs text-error">
-          {briefingError}. You can still read the full decision above.
-        </p>
-      )}
-
-      {briefingStatus === 'unavailable' && (
-        <p className="mt-3 text-center text-xs text-ink-faint">
-          Voice briefing requires an ElevenLabs API key. The rest of the app works normally.
+      {/* Briefing status messages */}
+      {briefingStatus === 'device-voice' && (
+        <p className="mt-3 text-center text-xs text-ink-muted flex items-center justify-center gap-1.5">
+          <Volume2 className="h-3 w-3" />
+          Using device voice — ElevenLabs is temporarily unavailable.
         </p>
       )}
 
       {briefingStatus === 'playing' && (
         <p className="mt-3 text-center text-xs text-ink-faint flex items-center justify-center gap-1">
           <Play className="h-3 w-3" />
-          Briefing playing...
+          Briefing playing — powered by ElevenLabs
+        </p>
+      )}
+
+      {briefingStatus === 'unavailable' && (
+        <p className="mt-3 text-center text-xs text-ink-faint">
+          Voice briefing is not available right now. You can still read the full decision above.
         </p>
       )}
     </div>

@@ -96,24 +96,36 @@ Respond with ONLY a JSON object (no markdown, no explanation outside JSON) with 
 
 The reasoning must be grounded in the supplied tool data only. Keep it concise.`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash"];
+    const requestBody = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 800,
+        responseMimeType: "application/json",
+      },
+    };
 
-    const geminiResponse = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 800,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
+    let geminiResponse: Response | null = null;
+    let lastError: string | null = null;
 
-    if (!geminiResponse.ok) {
+    for (const model of GEMINI_MODELS) {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      geminiResponse = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (geminiResponse.ok) break;
+
       const errText = await geminiResponse.text();
-      console.error("Gemini API error:", geminiResponse.status, errText);
+      console.error(`Gemini API error (${model}):`, geminiResponse.status, errText);
+      lastError = `Gemini ${model} returned ${geminiResponse.status}`;
+      geminiResponse = null;
+    }
+
+    if (!geminiResponse || !geminiResponse.ok) {
       return new Response(
         JSON.stringify({ error: "Gemini analysis failed" }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },

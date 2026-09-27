@@ -78,4 +78,4 @@ export interface AnalysisState {
   error: string | null;
 }
 
-export type BriefingStatus = 'idle' | 'generating' | 'playing' | 'error' | 'unavailable';
+export type BriefingStatus = 'idle' | 'generating' | 'playing' | 'error' | 'unavailable' | 'device-voice';
