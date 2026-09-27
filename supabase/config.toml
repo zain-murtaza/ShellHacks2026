@@ -1,0 +1,5 @@
+[functions.gemini-decision]
+verify_jwt = true
+
+[functions.voice-briefing]
+verify_jwt = true
